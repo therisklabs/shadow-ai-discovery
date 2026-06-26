@@ -1,0 +1,224 @@
+"""
+Pre-baked ScanReport for --mock / Linux demo mode.
+Run: python -m ai_discovery.main scan --mock
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from ai_discovery.models import (
+    AppCategory,
+    DetectionMethod,
+    GPUInfo,
+    GPUVendor,
+    InstalledApp,
+    InstalledPackage,
+    ModelFile,
+    PythonEnvironment,
+    RunningService,
+    ScanMetadata,
+    ScanReport,
+)
+
+
+def make_mock_report() -> ScanReport:
+    return ScanReport(
+        metadata=ScanMetadata(
+            scan_started_at=datetime(2025, 6, 1, 10, 0, 0),
+            scan_completed_at=datetime(2025, 6, 1, 10, 0, 14),
+            scan_duration_seconds=14.3,
+            hostname="DEMO-PC",
+            username="demo_user",
+            platform="win32",
+            windows_version="10.0.22631",
+            tool_version="0.1.0",
+            categories_scanned=["apps", "processes", "models", "packages", "gpu"],
+        ),
+        installed_apps=[
+            InstalledApp(
+                name="Ollama",
+                version="0.3.14",
+                install_path=r"C:\Users\demo\AppData\Local\Programs\Ollama",
+                exe_path=r"C:\Users\demo\AppData\Local\Programs\Ollama\ollama.exe",
+                category=AppCategory.LOCAL_LLM,
+                detection_methods=[DetectionMethod.REGISTRY, DetectionMethod.FILESYSTEM],
+                publisher="Ollama Inc.",
+            ),
+            InstalledApp(
+                name="LM Studio",
+                version="0.3.5",
+                install_path=r"C:\Users\demo\AppData\Local\Programs\LM-Studio",
+                exe_path=r"C:\Users\demo\AppData\Local\Programs\LM-Studio\LM Studio.exe",
+                category=AppCategory.LOCAL_LLM,
+                detection_methods=[DetectionMethod.REGISTRY],
+                publisher="LM Studio",
+            ),
+            InstalledApp(
+                name="Jan",
+                version="0.5.7",
+                install_path=r"C:\Users\demo\AppData\Local\Programs\jan",
+                category=AppCategory.LOCAL_LLM,
+                detection_methods=[DetectionMethod.FILESYSTEM],
+            ),
+            InstalledApp(
+                name="ComfyUI",
+                category=AppCategory.IMAGE_GENERATION,
+                detection_methods=[DetectionMethod.PROCESS],
+            ),
+            InstalledApp(
+                name="Cursor",
+                version="0.44.9",
+                install_path=r"C:\Users\demo\AppData\Local\Programs\cursor",
+                category=AppCategory.CODE_ASSISTANT,
+                detection_methods=[DetectionMethod.REGISTRY, DetectionMethod.FILESYSTEM],
+                publisher="Anysphere",
+            ),
+            InstalledApp(
+                name="GitHub Copilot (VS Code)",
+                version="1.230.0",
+                category=AppCategory.CODE_ASSISTANT,
+                detection_methods=[DetectionMethod.FILESYSTEM],
+                publisher="GitHub",
+            ),
+            InstalledApp(
+                name="Claude Desktop",
+                version="0.9.3",
+                install_path=r"C:\Users\demo\AppData\Local\AnthropicClaude",
+                category=AppCategory.AI_INFRASTRUCTURE,
+                detection_methods=[DetectionMethod.REGISTRY],
+                publisher="Anthropic",
+            ),
+        ],
+        running_services=[
+            RunningService(
+                name="Ollama",
+                pid=4832,
+                port=11434,
+                endpoint_url="http://127.0.0.1:11434",
+                is_alive=True,
+                loaded_models=["llama3.2:3b", "mistral:7b", "codellama:13b"],
+                process_name="ollama.exe",
+            ),
+            RunningService(
+                name="LM Studio",
+                pid=9120,
+                port=1234,
+                endpoint_url="http://127.0.0.1:1234",
+                is_alive=True,
+                loaded_models=["lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"],
+                process_name="LM Studio.exe",
+            ),
+            RunningService(
+                name="ComfyUI",
+                pid=15432,
+                port=8188,
+                endpoint_url="http://127.0.0.1:8188",
+                is_alive=True,
+                loaded_models=["ComfyUI 0.3.4"],
+                process_name="python.exe",
+            ),
+        ],
+        model_files=[
+            ModelFile(
+                path="C:/Users/demo/.ollama/models/blobs/sha256-abc123",
+                filename="sha256-abc123",
+                extension=".gguf",
+                model_type="GGUF (llama.cpp)",
+                size_bytes=8_053_063_680,
+                modified_at=datetime(2025, 5, 15, 14, 22, 0),
+                probable_app="Ollama",
+            ),
+            ModelFile(
+                path="C:/Users/demo/.lmstudio/models/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+                filename="Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+                extension=".gguf",
+                model_type="GGUF (llama.cpp)",
+                size_bytes=4_920_772_608,
+                modified_at=datetime(2025, 5, 20, 9, 10, 0),
+                probable_app="LM Studio",
+            ),
+            ModelFile(
+                path="C:/Users/demo/.lmstudio/models/mistral/Mistral-7B-Instruct-v0.3-GGUF/Mistral-7B-v0.3.Q4_K_M.gguf",
+                filename="Mistral-7B-v0.3.Q4_K_M.gguf",
+                extension=".gguf",
+                model_type="GGUF (llama.cpp)",
+                size_bytes=4_368_438_272,
+                modified_at=datetime(2025, 4, 10, 16, 5, 0),
+                probable_app="LM Studio",
+            ),
+            ModelFile(
+                path="C:/Users/demo/ComfyUI/models/checkpoints/v1-5-pruned-emaonly.safetensors",
+                filename="v1-5-pruned-emaonly.safetensors",
+                extension=".safetensors",
+                model_type="SafeTensors (HuggingFace)",
+                size_bytes=4_265_259_520,
+                modified_at=datetime(2025, 3, 1, 11, 30, 0),
+                probable_app="ComfyUI",
+            ),
+            ModelFile(
+                path="C:/Users/demo/ComfyUI/models/checkpoints/sdxl_base_1.0.safetensors",
+                filename="sdxl_base_1.0.safetensors",
+                extension=".safetensors",
+                model_type="SafeTensors (HuggingFace)",
+                size_bytes=6_938_078_208,
+                modified_at=datetime(2025, 3, 5, 8, 45, 0),
+                probable_app="ComfyUI",
+            ),
+            ModelFile(
+                path="C:/Users/demo/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/abc/pytorch_model.bin",
+                filename="pytorch_model.bin",
+                extension=".bin",
+                model_type="Binary model (HuggingFace/GGML)",
+                size_bytes=90_882_176,
+                modified_at=datetime(2025, 2, 10, 12, 0, 0),
+                probable_app="HuggingFace Hub",
+            ),
+        ],
+        python_environments=[
+            PythonEnvironment(
+                interpreter_path=r"C:\Users\demo\anaconda3\envs\ai\python.exe",
+                python_version="3.11.9",
+                environment_type="conda",
+                environment_name="ai",
+                packages=[
+                    InstalledPackage(name="torch", version="2.3.1+cu121", category="Deep Learning", has_gpu_support=True),
+                    InstalledPackage(name="transformers", version="4.42.4", category="HuggingFace"),
+                    InstalledPackage(name="diffusers", version="0.29.2", category="HuggingFace"),
+                    InstalledPackage(name="accelerate", version="0.32.1", category="HuggingFace"),
+                    InstalledPackage(name="langchain", version="0.2.6", category="Orchestration"),
+                    InstalledPackage(name="openai", version="1.35.10", category="API SDK"),
+                    InstalledPackage(name="anthropic", version="0.30.1", category="API SDK"),
+                    InstalledPackage(name="sentence_transformers", version="3.0.1", category="Embeddings"),
+                    InstalledPackage(name="chromadb", version="0.5.3", category="Vector DB"),
+                    InstalledPackage(name="ollama", version="0.3.0", category="API SDK"),
+                ],
+            ),
+            PythonEnvironment(
+                interpreter_path=r"C:\Users\demo\anaconda3\python.exe",
+                python_version="3.12.4",
+                environment_type="conda",
+                packages=[
+                    InstalledPackage(name="scikit-learn", version="1.5.0", category="ML"),
+                    InstalledPackage(name="onnxruntime", version="1.18.0", category="Runtime"),
+                ],
+            ),
+        ],
+        gpus=[
+            GPUInfo(
+                name="NVIDIA GeForce RTX 4080",
+                vendor=GPUVendor.NVIDIA,
+                vram_mb=16_384,
+                driver_version="555.85",
+                cuda_version="12.5",
+                compute_capability="8.9",
+                supports_cuda=True,
+                detection_source="nvidia-smi",
+            ),
+            GPUInfo(
+                name="CPU: 13th Gen Intel Core i9-13900K (24c/32t)",
+                vendor=GPUVendor.UNKNOWN,
+                detection_source="psutil",
+            ),
+        ],
+    )
