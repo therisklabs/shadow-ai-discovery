@@ -32,7 +32,7 @@ def make_mock_report() -> ScanReport:
             username="demo_user",
             platform="win32",
             windows_version="10.0.22631",
-            tool_version="0.1.0",
+            tool_version="0.2.0",
             categories_scanned=["apps", "processes", "models", "packages", "gpu"],
         ),
         installed_apps=[
@@ -89,6 +89,14 @@ def make_mock_report() -> ScanReport:
                 detection_methods=[DetectionMethod.REGISTRY],
                 publisher="Anthropic",
             ),
+            InstalledApp(
+                name="Cowork",
+                version="1.2.0",
+                install_path=r"C:\Users\demo\AppData\Local\Programs\Cowork",
+                exe_path=r"C:\Users\demo\AppData\Local\Programs\Cowork\Cowork.exe",
+                category=AppCategory.AI_INFRASTRUCTURE,
+                detection_methods=[DetectionMethod.FILESYSTEM],
+            ),
         ],
         running_services=[
             RunningService(
@@ -117,6 +125,13 @@ def make_mock_report() -> ScanReport:
                 is_alive=True,
                 loaded_models=["ComfyUI 0.3.4"],
                 process_name="python.exe",
+            ),
+            RunningService(
+                name="OpenAI-compatible API (port 8000)",
+                port=8000,
+                endpoint_url="http://127.0.0.1:8000",
+                is_alive=True,
+                loaded_models=["NousResearch/Hermes-3-Llama-3.1-8B"],
             ),
         ],
         model_files=[
@@ -173,6 +188,15 @@ def make_mock_report() -> ScanReport:
                 size_bytes=90_882_176,
                 modified_at=datetime(2025, 2, 10, 12, 0, 0),
                 probable_app="HuggingFace Hub",
+            ),
+            ModelFile(
+                path="D:/AI/models/Hermes-3-Llama-3.1-8B.Q4_K_M.gguf",
+                filename="Hermes-3-Llama-3.1-8B.Q4_K_M.gguf",
+                extension=".gguf",
+                model_type="GGUF (llama.cpp)",
+                size_bytes=4_661_190_656,
+                modified_at=datetime(2025, 5, 30, 20, 0, 0),
+                probable_app=None,
             ),
         ],
         python_environments=[

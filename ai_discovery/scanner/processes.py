@@ -227,24 +227,73 @@ def _scan_processes() -> dict[int, RunningService]:
 # ---------------------------------------------------------------------------
 
 
-def _scan_ports() -> dict[int, int]:
-    """Return {port: pid} for known AI ports that are in LISTEN state."""
-    results: dict[int, int] = {}
+def _scan_ports() -> tuple[dict[int, int], list[int]]:
+    """Return ({known_port: pid}, [unknown_listen_ports]) for all TCP LISTEN sockets."""
+    known: dict[int, int] = {}
+    unknown: list[int] = []
     try:
         for conn in psutil.net_connections(kind="tcp"):
             if conn.status != "LISTEN":
                 continue
             port = conn.laddr.port
             if port in _PORT_TO_DEF:
-                results[port] = conn.pid or -1
+                known[port] = conn.pid or -1
+            else:
+                unknown.append(port)
     except (psutil.AccessDenied, psutil.NoSuchProcess, PermissionError):
         pass
-    return results
+    return known, unknown
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — HTTP endpoint probing
+# Step 3 — HTTP endpoint probing (known services)
 # ---------------------------------------------------------------------------
+
+_GENERIC_PROBE_PATHS = [
+    ("/v1/models", _extract_openai_models),
+    ("/api/tags", _extract_ollama_models),
+    ("/api/v1/info", _extract_kobold_version),
+    ("/health", lambda d: []),
+]
+
+
+def _fingerprint_service(data: dict, port: int) -> Optional[str]:
+    if isinstance(data.get("models"), list):
+        return f"Ollama-compatible service (port {port})"
+    if isinstance(data.get("data"), list):
+        return f"OpenAI-compatible API (port {port})"
+    if "result" in data:
+        return f"KoboldCpp-compatible service (port {port})"
+    if "version" in data or "app_version" in data:
+        return f"AI Service (port {port})"
+    if data.get("status") == "ok" or data.get("ok") is True:
+        return f"AI Service (port {port})"
+    return None
+
+
+def _probe_unknown_port(port: int, timeout: int) -> Optional[RunningService]:
+    for path, extractor in _GENERIC_PROBE_PATHS:
+        url = f"http://127.0.0.1:{port}{path}"
+        try:
+            resp = requests.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                except ValueError:
+                    continue
+                name = _fingerprint_service(data, port)
+                if name:
+                    models = extractor(data) if extractor else []
+                    return RunningService(
+                        name=name,
+                        port=port,
+                        endpoint_url=f"http://127.0.0.1:{port}",
+                        is_alive=True,
+                        loaded_models=[m for m in models if m],
+                    )
+        except Exception:
+            continue
+    return None
 
 
 def _probe_endpoint(sdef: _ServiceDef, port: int, timeout: int) -> tuple[bool, list[str], Optional[str]]:
@@ -289,8 +338,8 @@ def scan_processes(http_timeout: int = 3) -> tuple[list[RunningService], list[st
     # Step 1: processes
     proc_services = _scan_processes()
 
-    # Step 2: ports
-    port_pids = _scan_ports()
+    # Step 2: ports — all LISTEN sockets, split into known and unknown
+    port_pids, unknown_ports = _scan_ports()
 
     # Merge: start from process-detected services, then add port-only detections
     services: dict[str, RunningService] = {}
@@ -311,14 +360,10 @@ def scan_processes(http_timeout: int = 3) -> tuple[list[RunningService], list[st
             if existing.port is None:
                 services[sdef.name] = existing.model_copy(update={"port": port})
 
-    # Step 3: probe all known ports concurrently
-    ports_to_probe = [
-        (_PORT_TO_DEF[port], port)
-        for port in _PORT_TO_DEF
-    ]
+    # Step 3a: probe all known ports concurrently
+    ports_to_probe = [(_PORT_TO_DEF[port], port) for port in _PORT_TO_DEF]
     probe_results = _probe_all(ports_to_probe, http_timeout)
 
-    # Update services with probe results
     for port, (alive, models) in probe_results.items():
         sdef = _PORT_TO_DEF[port]
         if alive and sdef.name not in services:
@@ -335,6 +380,25 @@ def scan_processes(http_timeout: int = 3) -> tuple[list[RunningService], list[st
                 "is_alive": alive,
                 "loaded_models": models if models else existing.loaded_models,
             })
+
+    # Step 3b: probe unknown LISTEN ports concurrently for generic AI fingerprinting
+    if unknown_ports:
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            future_to_port = {
+                pool.submit(_probe_unknown_port, port, http_timeout): port
+                for port in unknown_ports
+            }
+            for future in as_completed(future_to_port):
+                port = future_to_port[future]
+                try:
+                    svc = future.result()
+                    if svc is not None:
+                        # Use port-keyed name to avoid clobbering known services
+                        key = svc.name
+                        if key not in services:
+                            services[key] = svc
+                except Exception:
+                    pass
 
     # Only return services that are either alive or have a running process
     final = [

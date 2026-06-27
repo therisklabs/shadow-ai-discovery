@@ -214,6 +214,111 @@ TOOL_DEFS: list[_ToolDef] = [
         exe_name="Copilot.exe",
         publisher_patterns=["microsoft"],
     ),
+    # ------------------------------------------------------------------
+    # New tools added in v0.2.0
+    # ------------------------------------------------------------------
+    _ToolDef(
+        name="Cowork",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["cowork"],
+        fs_paths=[
+            r"%LOCALAPPDATA%\Programs\cowork",
+            r"%LOCALAPPDATA%\Programs\Cowork",
+            r"%APPDATA%\cowork",
+        ],
+        which_names=["cowork"],
+        exe_name="Cowork.exe",
+    ),
+    _ToolDef(
+        name="Hugging Face CLI",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["huggingface", "hugging face"],
+        fs_paths=[r"%USERPROFILE%\.cache\huggingface"],
+        which_names=["huggingface-cli"],
+    ),
+    _ToolDef(
+        name="vLLM",
+        category=AppCategory.LOCAL_LLM,
+        display_name_patterns=["vllm"],
+        fs_paths=[r"%LOCALAPPDATA%\vllm"],
+        which_names=["vllm"],
+    ),
+    _ToolDef(
+        name="Msty",
+        category=AppCategory.LOCAL_LLM,
+        display_name_patterns=["msty"],
+        fs_paths=[
+            r"%LOCALAPPDATA%\Programs\msty",
+            r"%LOCALAPPDATA%\Programs\Msty",
+        ],
+        exe_name="Msty.exe",
+    ),
+    _ToolDef(
+        name="LLM CLI",
+        category=AppCategory.LOCAL_LLM,
+        display_name_patterns=["llm (simon", "simon willison"],
+        which_names=["llm"],
+    ),
+    _ToolDef(
+        name="Pinokio",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["pinokio"],
+        fs_paths=[
+            r"%USERPROFILE%\pinokio",
+            r"%LOCALAPPDATA%\Programs\pinokio",
+            r"%LOCALAPPDATA%\Programs\Pinokio",
+        ],
+        exe_name="Pinokio.exe",
+    ),
+    _ToolDef(
+        name="Lobe Chat",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["lobe chat", "lobechat"],
+        fs_paths=[
+            r"%LOCALAPPDATA%\Programs\lobe-chat",
+            r"%LOCALAPPDATA%\Programs\Lobe Chat",
+        ],
+        exe_name="Lobe Chat.exe",
+    ),
+    _ToolDef(
+        name="Open WebUI",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["open webui", "openwebui"],
+        fs_paths=[r"%APPDATA%\open-webui"],
+        which_names=["open-webui"],
+    ),
+    _ToolDef(
+        name="NVIDIA CUDA Toolkit",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["nvidia cuda", "cuda toolkit"],
+        fs_paths=[r"%PROGRAMFILES%\NVIDIA GPU Computing Toolkit\CUDA"],
+        publisher_patterns=["nvidia"],
+    ),
+    _ToolDef(
+        name="Docker Desktop",
+        category=AppCategory.AI_INFRASTRUCTURE,
+        display_name_patterns=["docker desktop"],
+        fs_paths=[r"%PROGRAMFILES%\Docker\Docker"],
+        exe_name="Docker Desktop.exe",
+    ),
+    _ToolDef(
+        name="Hermes",
+        category=AppCategory.LOCAL_LLM,
+        display_name_patterns=["hermes"],
+        fs_paths=[
+            r"%LOCALAPPDATA%\Programs\Hermes",
+            r"%LOCALAPPDATA%\Programs\hermes",
+        ],
+        which_names=["hermes"],
+        exe_name="Hermes.exe",
+    ),
+    _ToolDef(
+        name="Enchanted",
+        category=AppCategory.LOCAL_LLM,
+        display_name_patterns=["enchanted"],
+        fs_paths=[r"%LOCALAPPDATA%\Programs\Enchanted"],
+        exe_name="Enchanted.exe",
+    ),
 ]
 
 _UNINSTALL_PATHS = [
@@ -387,6 +492,82 @@ def _scan_filesystem() -> list[tuple[_ToolDef, str]]:
 
 
 # ---------------------------------------------------------------------------
+# AI-keyword registry scan (catches tools not in TOOL_DEFS)
+# ---------------------------------------------------------------------------
+
+_AI_KEYWORDS = [
+    "llm", "gpt", " ai ", "ollama", "stable diffusion", "copilot",
+    "neural", "inference", "cuda", "hugging", "langchain", "diffusion",
+    "generative", "embedding", "llama", "mistral", "gemini", "claude",
+    "whisper", "midjourney", "comfyui", "kobold", "oobabooga",
+]
+
+_KNOWN_TOOL_NAMES = {t.name.lower() for t in TOOL_DEFS}
+
+
+def _scan_registry_for_unknown_ai_apps() -> list[InstalledApp]:
+    """Return apps whose registry DisplayName matches AI keywords but aren't in TOOL_DEFS."""
+    if sys.platform != "win32":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    results: list[InstalledApp] = []
+    seen: set[str] = set()
+
+    for hive_const, path in _UNINSTALL_PATHS:
+        try:
+            hive = winreg.ConnectRegistry(None, hive_const)
+            base = _open_key_safe(hive, path)
+            if base is None:
+                continue
+            i = 0
+            while True:
+                try:
+                    subkey_name = winreg.EnumKey(base, i)
+                    i += 1
+                except OSError:
+                    break
+                sub = _open_key_safe(base, subkey_name)
+                if sub is None:
+                    continue
+                display_name = _try_read_value(sub, "DisplayName") or ""
+                publisher = _try_read_value(sub, "Publisher") or ""
+                version = _try_read_value(sub, "DisplayVersion")
+                install_path = _try_read_value(sub, "InstallLocation")
+                winreg.CloseKey(sub)
+
+                if not display_name:
+                    continue
+
+                dn_lower = display_name.lower()
+                if dn_lower in seen:
+                    continue
+                if any(dn_lower == t for t in _KNOWN_TOOL_NAMES):
+                    continue
+                # Check if already matched by TOOL_DEFS patterns
+                if any(_matches_tool(display_name, publisher, t) for t in TOOL_DEFS):
+                    continue
+                # Check AI keyword match
+                if any(kw in dn_lower for kw in _AI_KEYWORDS):
+                    seen.add(dn_lower)
+                    results.append(InstalledApp(
+                        name=display_name,
+                        version=version,
+                        install_path=install_path or None,
+                        category=AppCategory.OTHER,
+                        detection_methods=[DetectionMethod.REGISTRY],
+                        publisher=publisher or None,
+                    ))
+            winreg.CloseKey(base)
+        except OSError:
+            continue
+    return results
+
+
+# ---------------------------------------------------------------------------
 # PATH probe
 # ---------------------------------------------------------------------------
 
@@ -498,6 +679,16 @@ def scan_apps() -> tuple[list[InstalledApp], list[str]]:
         )
         for entry in found.values()
     ]
+
+    # Layer 4: AI-keyword registry scan for unknown tools
+    try:
+        known_names_lower = {a.name.lower() for a in apps}
+        for unknown_app in _scan_registry_for_unknown_ai_apps():
+            if unknown_app.name.lower() not in known_names_lower:
+                apps.append(unknown_app)
+                known_names_lower.add(unknown_app.name.lower())
+    except Exception as exc:
+        warnings.append(f"AI-keyword registry scan error: {exc}")
 
     # Sort by category, then name
     apps.sort(key=lambda a: (a.category.value, a.name))

@@ -86,3 +86,52 @@ def test_no_duplicate_files(tmp_path):
     results, _ = scan_models(extra_paths=[str(model_dir), str(model_dir)])
     gguf_files = [f for f in results if f.filename == "model.gguf"]
     assert len(gguf_files) == 1
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 deep scan tests
+# ---------------------------------------------------------------------------
+
+def test_should_skip_dir_windows_dirs():
+    from ai_discovery.scanner.models_scan import _should_skip_dir
+    assert _should_skip_dir(r"C:\Windows\System32")
+    assert _should_skip_dir(r"C:\Windows")
+    assert _should_skip_dir(r"C:\$Recycle.Bin")
+    assert _should_skip_dir(r"C:\node_modules")
+
+
+def test_should_skip_dir_ai_dirs_not_skipped():
+    from ai_discovery.scanner.models_scan import _should_skip_dir
+    assert not _should_skip_dir(r"C:\Users\user\models")
+    assert not _should_skip_dir(r"D:\AI\checkpoints")
+    assert not _should_skip_dir(r"C:\Users\user\.ollama")
+
+
+def test_all_drives_returns_list():
+    from ai_discovery.scanner.models_scan import _all_drives
+    drives = _all_drives()
+    assert isinstance(drives, list)
+    assert len(drives) >= 1
+
+
+def test_deep_scan_finds_models(tmp_path):
+    # Place a model file in a subdirectory
+    model_dir = tmp_path / "AI" / "models"
+    _write(model_dir / "hermes.gguf")
+    results, warnings = scan_models(extra_paths=[str(tmp_path)], deep=True)
+    assert any(f.filename == "hermes.gguf" for f in results)
+
+
+def test_deep_scan_skips_dirs(tmp_path, mocker):
+    from ai_discovery.scanner.models_scan import _should_skip_dir
+    # Verify skip logic is applied during deep walk
+    skip_dir = tmp_path / "node_modules"
+    _write(skip_dir / "fake.gguf")
+    safe_dir = tmp_path / "models"
+    _write(safe_dir / "real.gguf")
+
+    results, _ = scan_models(extra_paths=[str(tmp_path)], deep=True)
+    # real.gguf should be found, fake.gguf in node_modules should be skipped
+    fnames = [f.filename for f in results]
+    assert "real.gguf" in fnames
+    assert "fake.gguf" not in fnames

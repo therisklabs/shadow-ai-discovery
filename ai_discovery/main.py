@@ -55,6 +55,10 @@ def scan(
     timeout: int = typer.Option(3, "--timeout", help="HTTP probe timeout in seconds."),
     no_progress: bool = typer.Option(False, "--no-progress", help="Disable progress spinners."),
     mock: bool = typer.Option(False, "--mock", help="Demo mode with synthetic data (works on Linux)."),
+    deep: bool = typer.Option(
+        False, "--deep",
+        help="Full drive scan: walk all drives for model files and find all Python environments. Slow (3-10 min) but finds everything.",
+    ),
 ) -> None:
     """Scan this machine for AI tools, running models, and infrastructure."""
 
@@ -72,6 +76,9 @@ def scan(
             write_json(report, output)
             console.print(f"\n[dim]Report saved to: {output}[/]")
         return
+
+    if deep:
+        console.print("[yellow]Deep scan in progress — this may take 3-10 minutes on large drives.[/]")
 
     cats = {c.strip().lower() for c in categories.split(",")}
 
@@ -103,9 +110,9 @@ def scan(
     if "processes" in cats:
         steps.append(("Scanning running AI services…", lambda r: _run_processes(r, timeout), report))
     if "models" in cats:
-        steps.append(("Scanning for model files…", lambda r: _run_models(r, extra_model_paths), report))
+        steps.append(("Scanning for model files…", lambda r: _run_models(r, extra_model_paths, deep), report))
     if "packages" in cats:
-        steps.append(("Scanning Python environments…", _run_packages, report))
+        steps.append(("Scanning Python environments…", lambda r: _run_packages(r, deep), report))
     if "gpu" in cats:
         steps.append(("Detecting GPU hardware…", _run_gpu, report))
 
@@ -167,16 +174,16 @@ def _run_processes(report: ScanReport, timeout: int) -> list[str]:
     return warnings
 
 
-def _run_models(report: ScanReport, extra_paths: list[str]) -> list[str]:
+def _run_models(report: ScanReport, extra_paths: list[str], deep: bool = False) -> list[str]:
     from ai_discovery.scanner.models_scan import scan_models
-    files, warnings = scan_models(extra_paths=extra_paths or None)
+    files, warnings = scan_models(extra_paths=extra_paths or None, deep=deep)
     report.model_files = files
     return warnings
 
 
-def _run_packages(report: ScanReport) -> list[str]:
+def _run_packages(report: ScanReport, deep: bool = False) -> list[str]:
     from ai_discovery.scanner.packages import scan_packages
-    envs, warnings = scan_packages()
+    envs, warnings = scan_packages(deep=deep)
     report.python_environments = envs
     return warnings
 

@@ -120,7 +120,54 @@ def _has_gpu_support(pkg_name: str, version: str) -> Optional[bool]:
 # ---------------------------------------------------------------------------
 
 
-def _find_python_interpreters() -> list[tuple[str, str]]:
+def _find_python_via_where() -> list[str]:
+    """Use 'where python' (Windows) or 'which -a python3' (Linux) to find PATH Pythons."""
+    found: list[str] = []
+    if sys.platform == "win32":
+        cmd = ["where", "python"]
+    else:
+        cmd = ["which", "-a", "python3"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line and os.path.isfile(line):
+                found.append(line)
+    except Exception:
+        pass
+    return found
+
+
+def _find_python_deep(drives: list[str]) -> list[str]:
+    """Walk drives looking for python.exe, skipping OS / cache dirs."""
+    found: list[str] = []
+    skip_names = {
+        "windows", "system32", "syswow64", "winsxs", "$recycle.bin",
+        "node_modules", ".git", "__pycache__", "temp", "tmp",
+        "programdata", "windowsapps",
+    }
+    exe_name = "python.exe" if sys.platform == "win32" else "python3"
+    for drive in drives:
+        for root, dirs, files in os.walk(drive, onerror=lambda _: None):
+            dirs[:] = [d for d in dirs if d.lower() not in skip_names]
+            depth = root.replace(drive, "").count(os.sep)
+            if depth > 8:
+                dirs.clear()
+                continue
+            for fname in files:
+                if fname.lower() == exe_name:
+                    found.append(os.path.join(root, fname))
+    return found
+
+
+def _all_drives() -> list[str]:
+    import string
+    if sys.platform == "win32":
+        return [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+    return ["/"]
+
+
+def _find_python_interpreters(deep: bool = False) -> list[tuple[str, str]]:
     """Return list of (interpreter_path, env_type) tuples."""
     found: dict[str, str] = {}
 
@@ -192,6 +239,15 @@ def _find_python_interpreters() -> list[tuple[str, str]]:
         ]:
             for path in glob.glob(pattern):
                 _add(path, "venv")
+
+    # Always include PATH-discovered interpreters (fast, catches non-standard installs)
+    for path in _find_python_via_where():
+        _add(path, "system")
+
+    # Deep mode: walk all drives
+    if deep:
+        for path in _find_python_deep(_all_drives()):
+            _add(path, "system")
 
     return list(found.items())
 
@@ -272,9 +328,9 @@ def _query_interpreter(interpreter: str, env_type: str) -> Optional[PythonEnviro
 # ---------------------------------------------------------------------------
 
 
-def scan_packages() -> tuple[list[PythonEnvironment], list[str]]:
+def scan_packages(deep: bool = False) -> tuple[list[PythonEnvironment], list[str]]:
     """Return (environments, warnings)."""
-    interpreters = _find_python_interpreters()
+    interpreters = _find_python_interpreters(deep=deep)
     warnings: list[str] = []
     envs: list[PythonEnvironment] = []
 

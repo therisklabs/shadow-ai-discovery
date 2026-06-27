@@ -111,3 +111,66 @@ def test_category_assignment(tmp_path, windows_env):
     ollama = next((a for a in apps if a.name == "Ollama"), None)
     assert ollama is not None
     assert ollama.category == AppCategory.LOCAL_LLM
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 tests — new tools and AI-keyword scan
+# ---------------------------------------------------------------------------
+
+def test_cowork_in_tool_defs():
+    from ai_discovery.scanner.apps import TOOL_DEFS
+    names = [t.name for t in TOOL_DEFS]
+    assert "Cowork" in names
+
+
+def test_new_tools_present():
+    from ai_discovery.scanner.apps import TOOL_DEFS
+    names = {t.name for t in TOOL_DEFS}
+    for expected in ("Cowork", "Hugging Face CLI", "vLLM", "Msty", "Pinokio", "Docker Desktop"):
+        assert expected in names, f"Missing tool: {expected}"
+
+
+def test_ai_keyword_registry_scan_finds_unknown_app(windows_env):
+    hive = stub_winreg.HKEY_LOCAL_MACHINE
+    path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\SomeNewLLMTool"
+    stub_winreg.set_value(hive, path, "DisplayName", "SomeNewLLMTool v2")
+    stub_winreg.set_value(hive, path, "DisplayVersion", "2.0.0")
+    stub_winreg.set_value(hive, path, "Publisher", "AI Corp")
+    stub_winreg.set_subkeys(
+        hive,
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        ["SomeNewLLMTool"],
+    )
+
+    from ai_discovery.scanner.apps import _scan_registry_for_unknown_ai_apps
+    results = _scan_registry_for_unknown_ai_apps()
+    names = [r.name for r in results]
+    assert "SomeNewLLMTool v2" in names
+
+
+def test_ai_keyword_registry_scan_skips_known_tools(tmp_path, windows_env):
+    """Apps already matched by TOOL_DEFS should not appear in unknown scan."""
+    _setup_ollama_uninstall(tmp_path)
+    from ai_discovery.scanner.apps import _scan_registry_for_unknown_ai_apps
+    results = _scan_registry_for_unknown_ai_apps()
+    # Ollama is a known tool; it should not be in the "unknown" list
+    names_lower = [r.name.lower() for r in results]
+    assert "ollama" not in names_lower
+
+
+def test_unknown_ai_apps_appear_in_scan_results(windows_env):
+    hive = stub_winreg.HKEY_LOCAL_MACHINE
+    path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\HermesApp"
+    stub_winreg.set_value(hive, path, "DisplayName", "Hermes LLM Runner")
+    stub_winreg.set_value(hive, path, "Publisher", "AI Tools Inc")
+    stub_winreg.set_subkeys(
+        hive,
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        ["HermesApp"],
+    )
+
+    from ai_discovery.scanner.apps import scan_apps
+    apps, _ = scan_apps()
+    # "Hermes LLM Runner" contains "llm" — should be caught by keyword scan
+    names_lower = [a.name.lower() for a in apps]
+    assert any("hermes" in n for n in names_lower)

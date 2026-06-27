@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import string
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -120,6 +121,47 @@ def _make_model_file(path: str) -> Optional[ModelFile]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Deep scan helpers
+# ---------------------------------------------------------------------------
+
+_SKIP_DIR_NAMES: frozenset[str] = frozenset([
+    "windows", "system32", "syswow64", "winsxs", "windowsapps",
+    "$recycle.bin", "system volume information", "recovery",
+    "perflogs", "intel", "nvidia corporation",
+    "node_modules", ".git", "__pycache__", ".npm", ".cargo", ".rustup",
+    "temp", "tmp", "cache\\chrome", "cache\\firefox", "cache\\edge",
+    "google\\chrome", "mozilla\\firefox", "microsoft\\edge",
+])
+
+
+def _should_skip_dir(dirpath: str) -> bool:
+    lower = dirpath.lower().replace("\\", "/")
+    name = lower.rstrip("/").rsplit("/", 1)[-1]
+    if name in _SKIP_DIR_NAMES:
+        return True
+    # Skip known OS/browser cache sub-paths
+    skip_fragments = (
+        "programdata/microsoft",
+        "appdata/local/microsoft/windows",
+        "appdata/roaming/microsoft",
+        "appdata/local/google/chrome",
+        "appdata/local/mozilla",
+        "appdata/local/temp",
+    )
+    return any(frag in lower for frag in skip_fragments)
+
+
+def _all_drives() -> list[str]:
+    if sys.platform == "win32":
+        return [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+    return ["/"]
+
+
+def _deep_scan_dirs() -> list[str]:
+    return _all_drives()
+
+
 def _expand(path: str) -> str:
     return os.path.expandvars(os.path.expanduser(path))
 
@@ -158,11 +200,13 @@ def _default_scan_dirs() -> list[str]:
     return dirs
 
 
-def _walk(directory: str, seen_inodes: set) -> list[ModelFile]:
+def _walk(directory: str, seen_inodes: set, deep: bool = False) -> list[ModelFile]:
     results: list[ModelFile] = []
     target_exts = set(EXTENSION_TYPES.keys())
     try:
-        for root, _dirs, files in os.walk(directory, onerror=lambda _: None, followlinks=False):
+        for root, dirs, files in os.walk(directory, onerror=lambda _: None, followlinks=False):
+            if deep:
+                dirs[:] = [d for d in dirs if not _should_skip_dir(os.path.join(root, d))]
             for fname in files:
                 fpath = os.path.join(root, fname)
                 ext = Path(fname).suffix.lower()
@@ -189,10 +233,22 @@ def _walk(directory: str, seen_inodes: set) -> list[ModelFile]:
 # ---------------------------------------------------------------------------
 
 
-def scan_models(extra_paths: Optional[list[str]] = None) -> tuple[list[ModelFile], list[str]]:
-    """Return (model_files, warnings) sorted by size descending."""
+def scan_models(
+    extra_paths: Optional[list[str]] = None,
+    deep: bool = False,
+) -> tuple[list[ModelFile], list[str]]:
+    """Return (model_files, warnings) sorted by size descending.
+
+    When deep=True, walk every available drive (skipping OS dirs) instead of
+    just the 9 well-known locations.
+    """
     warnings: list[str] = []
-    dirs = _default_scan_dirs()
+
+    if deep:
+        dirs = _deep_scan_dirs()
+    else:
+        dirs = _default_scan_dirs()
+
     if extra_paths:
         for p in extra_paths:
             expanded = os.path.expandvars(os.path.expanduser(p))
@@ -211,12 +267,11 @@ def scan_models(extra_paths: Optional[list[str]] = None) -> tuple[list[ModelFile
             unique_dirs.append(d)
 
     seen_inodes: set = set()
-    # Deduplicate model files by resolved path
     seen_paths: set[str] = set()
     all_files: list[ModelFile] = []
 
     for d in unique_dirs:
-        for mf in _walk(d, seen_inodes):
+        for mf in _walk(d, seen_inodes, deep=deep):
             real_path = os.path.realpath(mf.path)
             if real_path not in seen_paths:
                 seen_paths.add(real_path)

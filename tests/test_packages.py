@@ -94,3 +94,42 @@ def test_scan_packages_returns_sorted(mocker):
     assert len(envs) >= 1
     # Most packages first
     assert len(envs[0].packages) >= len(envs[-1].packages)
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 Python discovery tests
+# ---------------------------------------------------------------------------
+
+def test_find_python_via_where_returns_list(mocker):
+    from ai_discovery.scanner.packages import _find_python_via_where
+    mock_result = mocker.MagicMock(returncode=0, stdout="/usr/bin/python3\n/usr/local/bin/python3\n")
+    mocker.patch("ai_discovery.scanner.packages.subprocess.run", return_value=mock_result)
+    mocker.patch("ai_discovery.scanner.packages.os.path.isfile", return_value=True)
+    paths = _find_python_via_where()
+    assert isinstance(paths, list)
+    assert len(paths) >= 1
+
+
+def test_find_python_via_where_empty_on_error(mocker):
+    from ai_discovery.scanner.packages import _find_python_via_where
+    mocker.patch(
+        "ai_discovery.scanner.packages.subprocess.run",
+        side_effect=Exception("no where command"),
+    )
+    paths = _find_python_via_where()
+    assert paths == []
+
+
+def test_scan_packages_deep_calls_deep_interpreters(mocker):
+    """deep=True should call _find_python_interpreters with deep=True."""
+    mock_find = mocker.patch(
+        "ai_discovery.scanner.packages._find_python_interpreters",
+        return_value=[(sys.executable, "system")],
+    )
+    output = json.dumps({"python": "3.11.9", "packages": [["openai", "1.0.0"]]})
+    mocker.patch(
+        "ai_discovery.scanner.packages.subprocess.run",
+        return_value=mocker.MagicMock(returncode=0, stdout=output),
+    )
+    envs, _ = scan_packages(deep=True)
+    mock_find.assert_called_once_with(deep=True)
